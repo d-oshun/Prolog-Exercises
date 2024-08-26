@@ -1,0 +1,101 @@
+/*
+Name: Diana Williams Oshun
+Student Number: 23101961
+Module: Logic CA208
+Project: Create a journey perdicate that outputs the fastest modes of transport between two locations
+Date: 7/04/24
+
+Outside Sources Used: 
+    1) CA208 Prolog notes https://www.computing.dcu.ie/%7Edavids/courses/CA208/CA208_Prolog_2p.pdf
+    2) SWI-Prolog (from the main website where I downloaded the prolog program) https://lpn.swi-prolog.org/lpnpage.php?pageid=online 
+    3) FreeCodeCamp article on Dijkstras algorithm https://www.freecodecamp.org/news/dijkstras-shortest-path-algorithm-visual-introduction 
+    4) Dijkstras Shortest Path Algorithm Explained | With Example | Graph Theory (YouTube Video).  https://www.youtube.com/watch?v=bZkzH5x0SKU
+*/
+
+/*FACTS*/
+% Recieved the majority of the facts from the assignment 
+route(dublin, cork, 200, 'fct').
+route(cork, dublin, 200, 'fct').
+route(cork, corkAirport, 20, 'fc').
+route(corkAirport, cork, 25, 'fc').
+route(dublin, dublinAirport, 10, 'fc').
+route(dublinAirport, dublin, 20, 'fc').
+route(dublinAirport, corkAirport, 225, 'p').
+route(corkAirport, dublinAirport, 225, 'p').
+route(dublin, wicklow, 100, 'fct').
+route(dublinAirport, ukAirport, 500, 'p').
+route(ukAirport, dublinAirport, 500, 'p').
+
+/*PREDICATES*/
+
+% Using the modes of transport between two locations, it finds a route and returns the route in K
+travel(Modes, Y, K) :- travelHelper(Modes, Y, [], K).
+
+% This is a helper predicate for travel, so that I can recursively find successful routes between the locations
+travelHelper(Modes, Y, X, Helper) :- route(Y, Z, _, Travel),atom_chars(Travel, TravelList), atom_chars(Modes, RouteList), intersection(RouteList, TravelList, [_|_]), \+ member(Z, X), !, travelHelper(Modes, Y, [Z|X], Helper).
+travelHelper(_, _, X, X).
+
+% Initalising all the different modes of transport with their corresponding speed
+speed(p, 500).
+speed(t, 100).
+speed(c, 80).
+speed(f, 5).
+
+% Determines the faster mode of transport out of two modes
+fastestMode(M1,M2,M1):- speed(M1,S1), speed(M2,S2), (S1 > S2), !.
+fastestMode(_,M,M).
+
+% Find the fastest mode of transport from a list of modes
+fastest([M|Modes], F):- fastestHelper(Modes, M, F).
+
+% This is a helper predicate for fastest, it helps find the overall fastest mode of transport
+fastestHelper([M|Modes], Temp1, F):- fastestMode(M, Temp1, Temp2), fastestHelper(Modes, Temp2, F).
+fastestHelper([], F, F).
+
+% Calculates how long it takes to travel between the locations using the fastest modes of transport for that route
+time(Start, Finish, Modes, Time, M) :- atom_chars(Modes, RouteList), route(Start, Finish, Distance, Travel), atom_chars(Travel, TravelList), intersection(RouteList, TravelList, Intersect), fastest(Intersect, F), speed(F, Speed), (Time is Distance / Speed), (M = F).
+
+% Finds the time and mode of transport for a specific node in a list of nodes
+timeList(Node, [[Node, _, Time, M]|_], Time, M):- !.
+timeList(Node, [_|T], Time, M):- timeList(Node, T, Time, M).
+timeList(_, [], 0, _).
+
+% Finds the parent node and mode of transport of a given node in the list of nodes
+parent(_, [], null, _).
+parent(Node, [[Node, P, _, M]|_], P, M) :- !.
+parent(Node, [_|T], P, M) :- parent(Node, T, P, M).
+
+% Checks if the node is there in a list of nodes
+hasNode([[Node,_,_,_]|_],Node) :- !.
+hasNode([_|T],Node) :- hasNode(T,Node).
+
+% Deletes a node from a list of nodes
+delete(Node, [[Node, _, _, _]|T], T) :- !.
+delete(Node, [H1|T1], [H1|T2]) :- delete(Node, T1, T2).
+
+% Inserts a node into a sorted list of nodes based on travel time
+insert(Node, P, Time, M, [H|T], [H|T2]) :- (H = [_, _, Time1, _]), (Time > Time1), !, insert(Node, P, Time, M, T, T2).
+insert(Node, P, Time, M, [H|T], [[Node, P, Time, M], H|T]) :- (H = [_, _, Time1, _]), (Time =< Time1), !.
+insert(Node, P, Time, M, [], [[Node, P, Time, M]]).
+
+% Updates the list of nodes with new travel times and modes based on the current node.
+update(_, _, [], _, List, List).
+update(PNode, Modes, [N|Nodes], Complete, In, Out):-hasNode(Complete, N), !, update(PNode, Modes, Nodes, Complete, In, Out).
+update(PNode, Modes, [N|Nodes], Complete, In, Out):- (PNode = [PName, _, PTime, _]), time( PName, N, Modes, NodeT, M), (NewT is PTime + NodeT), execute(Modes, PName, N, NewT, M, In, List1), update(PNode, Modes, Nodes, Complete, List1, Out).
+
+% Uses Dijkstra algorithm to find the fastest path between two locations using the fastest modes of transport for that route
+dijkstra(Node, Target, Modes, List, Complete, Helper):- (Node = [NodeN,_,_,_]), (NodeN \= Target), travel(Modes, NodeN, Surrounding), \+ hasNode(Complete, NodeN), update(Node, Modes, Surrounding, Complete, List, List1), !, (List1 = [Next|List2]), dijkstra(Next, Target, Modes, List2, [Node|Complete], Helper).
+dijkstra(Node, Target, _, _, Complete, Helper):- (Node = [NodeN, _, _, _]), (NodeN = Target), reverse([Node|Complete], Helper).
+
+% Execute predicate updates and adds modifications to the list of nodes during dijkstra predicate
+execute( _, P, Node, NodeT, M, In, Out):- hasNode(In,Node), !, timeList(Node,In,PrevT, _), ( NodeT < PrevT -> delete(Node,In,List1), insert(Node,P,NodeT, M, List1, Out) ; Out = In ).
+execute( _, P, Node, NodeT, M, In, Out):- insert(Node, P, NodeT, M, In, Out).
+
+% Makes a path between two locations based on the parent-child relashionship nodes
+path(Start, Finish, Nodes, Path, Modes) :- makePath(Start, Finish, Nodes, RPath, Modes), reverse(RPath, Path).
+makePath(N, N, _, [N], []).
+makePath(Start, Finish, Nodes, [Finish|Path], [M|Modes]):- parent(Finish, Nodes, Prev, M), makePath(Start, Prev, Nodes, Path, Modes).
+
+% Finds the fastest route and modes of transport between two locations and prints this out to the user
+journey(Source, D, M) :- dijkstra([Source, null, 0, _], D, M, [], [], K), path(Source, D, K, Path, Modes), reverse(Modes, ReverseModes), write("From "), write(Source), write(" to "), write(D), write(" the fastest route available is: "), nl, writeln(Path), write("You need to use these modes of transport: "), nl, writeln(ReverseModes).
+
